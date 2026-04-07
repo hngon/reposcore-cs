@@ -23,31 +23,42 @@ jobs:
       - name: Sort docs list
         run: |
           python -c '
+          import os
+          import glob
           import re
           
-          file_path = "docs/README.md"
-          template_path = "docs/README-TEMPLATE.md"
+          docs_dir = "docs"
+          readme_path = os.path.join(docs_dir, "README.md")
+          template_path = os.path.join(docs_dir, "README-TEMPLATE.md")
           
-          with open(file_path, "r", encoding="utf-8") as f:
-              content = f.read()
-              
+          # Read template
           with open(template_path, "r", encoding="utf-8") as f:
               template_content = f.read()
               
-          pattern = r"^(.*?(?:### 문서 목록\s*\n+))(.*?)(?:\n+---.*)?$"
+          lines = []
+          for md_file in glob.glob(os.path.join(docs_dir, "*.md")):
+              filename = os.path.basename(md_file)
+              if filename in ["README.md", "README-TEMPLATE.md"]:
+                  continue
+                  
+              # Extract title or fallback
+              title = "설명 없음"
+              with open(md_file, "r", encoding="utf-8") as f:
+                  for line in f:
+                      line = line.strip()
+                      if line.startswith("# "):
+                          title = line[2:].strip()
+                          break
+              
+              lines.append(f"- [{filename}](./{filename}): {title}")
+              
+          lines.sort(key=lambda x: x.lower())
           
-          def sort_and_merge(match):
-              header = match.group(1)
-              list_content = match.group(2)
-              
-              lines = [line.strip() for line in list_content.split("\n") if line.strip().startswith("-")]
-              lines.sort(key=lambda x: x.lower())
-              
-              return header + "\n".join(lines) + "\n\n" + template_content
-              
-          new_content = re.sub(pattern, sort_and_merge, content, flags=re.DOTALL)
+          header = "# 프로젝트 운영 지침 및 개발 가이드\n\n### 문서 목록\n\n"
           
-          with open(file_path, "w", encoding="utf-8") as f:
+          new_content = header + "\n".join(lines) + "\n\n" + template_content
+          
+          with open(readme_path, "w", encoding="utf-8") as f:
               f.write(new_content)
           '
 
