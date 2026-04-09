@@ -43,18 +43,8 @@ dotnet run
 ### 기본 명령어 구조 (Synopsis)
 
 ```bash
-dotnet run -- <Owner> <Repo> <TargetUser> [Options]
+dotnet run --help
 ```
-*(참고: `dotnet run` 명령어 뒤에 반드시 `--`를 붙여야 뒤따르는 인자와 옵션이 애플리케이션으로 정상 전달됩니다.)*
-
-### 인자 (Arguments)
-명령어 실행 시 **반드시 정해진 순서대로** 입력해야 하는 필수 값들입니다.
-
-| 순서 | 인자명 | 설명 | 입력 예시 |
-| :--- | :--- | :--- | :--- |
-| 1 | **`Owner`** | 분석할 GitHub 저장소의 소유자 (조직명 또는 개인 계정) | `torvalds`, `microsoft` |
-| 2 | **`Repo`** | 분석할 GitHub 저장소의 이름 | `linux`, `vscode` |
-| 3 | **`TargetUser`** | 기여도 점수를 조회할 대상 학생(사용자)의 GitHub ID | `student-id` |
 
 ### 옵션 (Options)
 명령어의 동작 방식을 제어하거나 부가적인 기능을 켜고 끄는 역할을 합니다. 순서에 상관없이 자유롭게 배치할 수 있습니다.
@@ -68,7 +58,60 @@ dotnet run -- <Owner> <Repo> <TargetUser> [Options]
 **1. 도움말 확인 (가장 먼저 실행해 볼 명령어)**
 프로그램의 구체적인 사용법이 기억나지 않을 때 사용합니다.
 ```bash
-dotnet run -- --help
+dotnet run --help
+Description:
+  .NET Run Command
+
+Usage:
+  dotnet run [<applicationArguments>...] [options]
+
+Arguments:
+  <applicationArguments>  Arguments passed to the application that is being run. []
+
+Options:
+  -c, --configuration <CONFIGURATION>     The configuration to run for. The default for most projects is 'Debug'.
+  -f, --framework <FRAMEWORK>             The target framework to run for. The target framework must also be 
+                                          specified in the project file.
+  -r, --runtime <RUNTIME_IDENTIFIER>      The target runtime to run for.
+  --project <PROJECT_PATH>                The path to the project file to run (defaults to the current directory if 
+                                          there is only one project).
+  --file <FILE_PATH>                      The path to the file-based app to run (can be also passed as the first 
+                                          argument if there is no project in the current directory).
+  -lp, --launch-profile <LAUNCH_PROFILE>  The name of the launch profile (if any) to use when launching the 
+                                          application.
+  --no-launch-profile                     Do not attempt to use launchSettings.json or [app].run.json to configure 
+                                          the application. [default: False]
+  --no-build                              Do not build the project before running. Implies --no-restore. [default: 
+                                          False]
+  --interactive                           Allows the command to stop and wait for user input or action (for example 
+                                          to complete authentication). [default: True]
+  --no-restore                            Do not restore the project before building. [default: False]
+  --no-cache                              Skip up to date checks and always build the program before running. 
+                                          [default: False]
+  --sc, --self-contained                  Publish the .NET runtime with your application so the runtime doesn't need 
+                                          to be installed on the target machine.
+                                          The default is 'false.' However, when targeting .NET 7 or lower, the 
+                                          default is 'true' if a runtime identifier is specified. [default: False]
+  --no-self-contained                     Publish your application as a framework dependent application. A compatible 
+                                          .NET runtime must be installed on the target machine to run your 
+                                          application. [default: False]
+  -v, -verbosity <LEVEL>                  Set the MSBuild verbosity level. Allowed values are q[uiet], m[inimal], 
+                                          n[ormal], d[etailed], and diag[nostic].
+  -a, --arch <ARCH>                       The target architecture.
+  --os <OS>                               The target operating system.
+  --disable-build-servers                 Force the command to ignore any persistent build servers. [default: False]
+  --artifacts-path <ARTIFACTS_DIR>        The artifacts path. All output from the project, including build, publish, 
+                                          and pack output, will go in subfolders under the specified path.
+  -e, --environment <NAME="VALUE">        Sets the value of an environment variable. 
+                                          Creates the variable if it does not exist, overrides if it does. 
+                                          This argument can be specified multiple times to provide multiple variables.
+  
+                                          Examples:
+                                          -e VARIABLE=abc
+                                          -e VARIABLE="value with spaces"
+                                          -e VARIABLE="value;seperated with;semicolons"
+                                          -e VAR1=abc -e VAR2=def -e VAR3=ghi
+  -?, -h, --help                          Show command line help.
 ```
 
 ---
