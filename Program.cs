@@ -3,14 +3,22 @@ using Cocona;
 var app = CoconaApp.Create();
 
 app.AddCommand(([Argument(Description = "분석할 GitHub 저장소 (예: owner/repo)")] string repo,
-                [Option('t', Description = "GitHub Personal Access Token (비공개 저장소 접근 및 속도 제한 방지)")] string? token,
-                [Option('b', Description = "분석할 특정 브랜치 (기본값: 기본 브랜치)")] string? branch,
-                [Option(Description = "분석 시작 날짜 (형식: YYYY-MM-DD)")] DateTimeOffset? since,
-                [Option(Description = "분석 종료 날짜 (형식: YYYY-MM-DD)")] DateTimeOffset? until) =>
+                [Option('t', Description = "GitHub Personal Access Token (비공개 저장소 접근 및 속도 제한 방지)")] string? token = null,
+                [Option('b', Description = "분석할 특정 브랜치 (기본값: 기본 브랜치)")] string? branch = null,
+                [Option(Description = "분석 시작 날짜 (형식: YYYY-MM-DD)")] DateTimeOffset? since = null,
+                [Option(Description = "분석 종료 날짜 (형식: YYYY-MM-DD)")] DateTimeOffset? until = null) =>
 {
     Console.WriteLine($"저장소: {repo}");
-    
-    if (!string.IsNullOrEmpty(token)) Console.WriteLine("인증: 토큰 설정됨");
+
+    if (!string.IsNullOrEmpty(token))
+    {
+        Console.WriteLine($"토큰 인증 사용 중 (토큰: {token[..Math.Min(4, token.Length)]}***)");
+    }
+    else
+    {
+        Console.WriteLine("토큰 미입력 - 비인증 모드로 실행");
+    }
+
     if (!string.IsNullOrEmpty(branch)) Console.WriteLine($"브랜치: {branch}");
     if (since.HasValue) Console.WriteLine($"시작일: {since.Value:yyyy-MM-dd}");
     if (until.HasValue) Console.WriteLine($"종료일: {until.Value:yyyy-MM-dd}");
