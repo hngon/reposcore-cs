@@ -9,10 +9,10 @@ using System.Collections.Generic;
 
 var app = CoconaApp.Create();
 
-app.AddCommand(async ([Argument(Description = "저장소 이름 (예: owner/repo)")] string repo,
-                      [Option('t', Description = "GitHub Personal Access Token")] string? token = null) =>
+app.Run(async ([Argument(Description = "저장소 이름 (예: owner/repo)")] string repo,
+               [Option('t', Description = "GitHub Personal Access Token")] string? token = null) =>
 {
-    // 1. 입력받은 repo 문자열 분리 (owner/repo 형태 처리)
+    // 1. 입력받은 repo 문자열 분리
     var repoParts = repo.Split('/');
     if (repoParts.Length != 2)
     {
@@ -37,30 +37,25 @@ app.AddCommand(async ([Argument(Description = "저장소 이름 (예: owner/repo
 
     try
     {
-        // 2. GitHubService 인스턴스 생성 및 실제 데이터 조회
+        // 2. GitHubService 인스턴스 생성 및 조회
         var githubService = new GitHubService(ownerName, repoName, token);
 
         var allPullRequests = await githubService.GetPullRequestsAsync(ItemStateFilter.All);
         var allIssues = await githubService.GetIssuesAsync(ItemStateFilter.All);
 
-        // Merged 상태인 PR만 필터링
         var mergedPrs = allPullRequests.Where(pr => pr.MergedAt.HasValue).ToList();
 
-        // 3. 기여한 모든 사용자 ID 수집 (이슈 작성자 + 병합된 PR 작성자 중복 제거)
+        // 3. 기여자 수집
         var allContributors = mergedPrs.Select(pr => pr.User.Login)
             .Concat(allIssues.Select(issue => issue.User.Login))
             .Distinct();
 
-        // 4. 사용자별로 데이터 분류 및 점수 계산
+        // 4. 분류 및 계산
         foreach (var userId in allContributors)
         {
-            int docIssueCount = 0;
-            int featureBugIssueCount = 0;
-            int typoPrCount = 0;
-            int docPrCount = 0;
-            int featureBugPrCount = 0;
+            int docIssueCount = 0, featureBugIssueCount = 0;
+            int typoPrCount = 0, docPrCount = 0, featureBugPrCount = 0;
 
-            // 해당 사용자의 이슈 필터링 및 분류
             var userIssues = allIssues.Where(i => i.User.Login.Equals(userId, StringComparison.OrdinalIgnoreCase));
             foreach (var issue in userIssues)
             {
@@ -68,7 +63,6 @@ app.AddCommand(async ([Argument(Description = "저장소 이름 (예: owner/repo
                 else featureBugIssueCount++;
             }
 
-            // 해당 사용자의 병합된 PR 필터링 및 분류
             var userPrs = mergedPrs.Where(p => p.User.Login.Equals(userId, StringComparison.OrdinalIgnoreCase));
             foreach (var pr in userPrs)
             {
@@ -77,17 +71,11 @@ app.AddCommand(async ([Argument(Description = "저장소 이름 (예: owner/repo
                 else featureBugPrCount++;
             }
 
-            // 5. ScoreCalculator에 실제 데이터 전달하여 점수 계산
             int totalScore = ScoreCalculator.CalculateFinalScore(
-                featureBugPrCount,
-                docPrCount,
-                typoPrCount,
-                featureBugIssueCount,
-                docIssueCount
+                featureBugPrCount, docPrCount, typoPrCount, featureBugIssueCount, docIssueCount
             );
 
-            // 6. 기존 출력 형식에 맞게 데이터 출력
-            // 아이디, 문서이슈, 버그/기능이슈, 오타PR, 문서PR, 버그/기능PR, 총점
+            // 5. 결과 출력
             Console.WriteLine($"{userId}, {docIssueCount}, {featureBugIssueCount}, {typoPrCount}, {docPrCount}, {featureBugPrCount}, {totalScore}");
         }
     }
@@ -97,11 +85,7 @@ app.AddCommand(async ([Argument(Description = "저장소 이름 (예: owner/repo
     }
 });
 
-app.Run();
-
-// --- 데이터 분류(휴리스틱)를 위한 헬퍼 메서드 ---
-// 라벨이나 제목에 특정 키워드가 포함되어 있는지 검사합니다.
-
+// --- 데이터 분류 헬퍼 메서드 ---
 static bool IsDoc(string title, IReadOnlyList<Label> labels)
 {
     var keywords = new[] { "doc", "documentation", "문서" };
