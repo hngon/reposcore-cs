@@ -9,12 +9,22 @@ app.AddCommand(async (
     [Option("show-claims", Description = "최근 이슈 선점 현황 조회")] bool showClaims = false
 ) =>
 {
-    if (showClaims)
+if (showClaims)
+{
+    if (string.IsNullOrEmpty(token))
+        token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+
+    if (string.IsNullOrEmpty(token))
     {
-        var service = new IssueService();
-        await service.ShowRecentClaims(repo, token);
+        Console.WriteLine("GitHub 토큰이 필요합니다.");
         return;
     }
+
+    var parts = repo.Split('/');
+    var service = new GitHubService(parts[0], parts[1], token);
+    await service.ShowRecentClaimsAsync();
+    return;
+}
 
     Console.WriteLine($"저장소: {repo}");
 
