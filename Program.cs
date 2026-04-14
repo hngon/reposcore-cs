@@ -1,11 +1,21 @@
 using Cocona;
-using RepoScore.Data; // 앞서 생성한 ScoreCalculator의 네임스페이스
+using RepoScore.Data;
 
 var app = CoconaApp.Create();
 
-app.AddCommand(([Argument(Description = "대상 GitHub 저장소 (예: owner/repo)")] string repo,
-                [Option('t', Description = "GitHub 개인 액세스 토큰 (PAT)")] string? token = null) =>
+app.AddCommand(async (
+    [Argument] string repo,
+    [Option('t', Description = "GitHub Personal Access Token")] string? token = null,
+    [Option("show-claims", Description = "최근 이슈 선점 현황 조회")] bool showClaims = false
+) =>
 {
+    if (showClaims)
+    {
+        var service = new IssueService();
+        await service.ShowRecentClaims(repo, token);
+        return;
+    }
+
     Console.WriteLine($"저장소: {repo}");
 
     if (!string.IsNullOrEmpty(token))
