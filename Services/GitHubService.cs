@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Octokit;
 using Octokit.GraphQL;
@@ -13,14 +16,27 @@ namespace RepoScore.Services
         private readonly Octokit.GraphQL.Connection _connection;
         private readonly string _owner;
         private readonly string _repo;
+        private readonly string _token;
+
+        private static readonly HttpClient s_httpClient = new()
+        {
+            BaseAddress = new Uri("https://api.github.com/")
+        };
 
         private static readonly string[] s_claimKeywords =
             ["제가 하겠습니다", "진행하겠습니다", "할게요", "I'll take this"];
+
+        static GitHubService()
+        {
+            s_httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("reposcore-cs");
+            s_httpClient.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+        }
 
         public GitHubService(string owner, string repo, string token)
         {
             _owner = owner;
             _repo = repo;
+            _token = token ?? throw new ArgumentNullException(nameof(token));
 
             _connection = new Octokit.GraphQL.Connection(
                 new Octokit.GraphQL.ProductHeaderValue("reposcore-cs"),
@@ -75,47 +91,170 @@ namespace RepoScore.Services
         // 최근 이슈 선점 현황 조회
         public async Task ShowRecentClaimsAsync()
         {
-            var query = new Query()
-                .Repository(_repo, _owner)
-                .Issues(first: 20,
-                        states: new[] { IssueState.Open },
-                        orderBy: new IssueOrder
-                        {
-                            Field = IssueOrderField.CreatedAt,
-                            Direction = OrderDirection.Desc
-                        })
-                .Nodes
-                .Select(issue => new
-                {
-                    issue.Url,
-                    Comments = issue.Comments(first: 10).Nodes
-                        .Select(c => new
-                        {
-                            c.Body,
-                            c.CreatedAt,
-                            Login = c.Author.Login
-                        }).ToList()
-                });
+            const string graphQL = @"
+                query($owner: String!, $name: String!) {
+                  repository(owner: $owner, name: $name) {
+                    issues(first: 20, states: OPEN, orderBy: { field: CREATED_AT, direction: DESC }) {
+                      nodes {
+                        url
+                        comments(first: 10) {
+                          nodes {
+                            body
+                            createdAt
+                            author {
+                              login
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+            ";
 
-            var issues = await _connection.Run(query);
-            var now = DateTimeOffset.UtcNow;
-
-            Console.WriteLine("📌 최근 이슈 선점 현황\n");
-
-            foreach (var issue in issues)
+            var requestBody = new
             {
-                foreach (var comment in issue.Comments)
+                query = graphQL,
+                variables = new { owner = _owner, name = _repo }
+            };
+
+            var content = new StringContent(
+                JsonSerializer.Serialize(requestBody),
+                Encoding.UTF8,
+                "application/json");
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, "graphql")
+            {
+                Content = content
+            };
+            request.Headers.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+            HttpResponseMessage response;
+            try
+            {
+                response = await s_httpClient.SendAsync(request);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"GitHub 요청 실패: {ex.Message}");
+                return;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorText = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"GitHub API 요청 실패: HTTP {(int)response.StatusCode} {response.ReasonPhrase}");
+                if (!string.IsNullOrWhiteSpace(errorText))
                 {
-                    if ((now - comment.CreatedAt).TotalHours > 48)
+                    Console.WriteLine("응답 본문:");
+                    Console.WriteLine(errorText);
+                }
+                return;
+            }
+
+            var body = await response.Content.ReadAsStringAsync();
+            JsonDocument document;
+            try
+            {
+                document = JsonDocument.Parse(body);
+            }
+            catch (JsonException ex)
+            {
+                Console.WriteLine($"응답 JSON 파싱 실패: {ex.Message}");
+                return;
+            }
+
+            using (document)
+            {
+                var root = document.RootElement;
+                if (root.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array)
+                {
+                    Console.WriteLine("GraphQL 오류가 발생했습니다:");
+                    foreach (var error in errors.EnumerateArray())
+                    {
+                        if (error.TryGetProperty("message", out var errorMessage) && errorMessage.ValueKind == JsonValueKind.String)
+                        {
+                            Console.WriteLine($" - {errorMessage.GetString()}");
+                        }
+                        else
+                        {
+                            Console.WriteLine($" - {error}");
+                        }
+                    }
+                    return;
+                }
+
+                if (!root.TryGetProperty("data", out var data))
+                {
+                    Console.WriteLine("GitHub 응답에 data 필드가 없습니다.");
+                    return;
+                }
+
+                if (!data.TryGetProperty("repository", out var repository))
+                {
+                    Console.WriteLine("GitHub 응답에 repository 필드가 없습니다.");
+                    return;
+                }
+
+                if (!repository.TryGetProperty("issues", out var issues))
+                {
+                    Console.WriteLine("GitHub 응답에 issues 필드가 없습니다.");
+                    return;
+                }
+
+                if (!issues.TryGetProperty("nodes", out var nodes) || nodes.ValueKind != JsonValueKind.Array)
+                {
+                    Console.WriteLine("GitHub 응답에 issues.nodes 필드가 없습니다.");
+                    return;
+                }
+
+                var now = DateTimeOffset.UtcNow;
+                Console.WriteLine("📌 최근 이슈 선점 현황\n");
+
+                foreach (var issue in nodes.EnumerateArray())
+                {
+                    if (!issue.TryGetProperty("url", out var urlProperty) || urlProperty.ValueKind != JsonValueKind.String)
                         continue;
 
-                    if (s_claimKeywords.Any(k =>
-                        comment.Body?.Contains(k, StringComparison.OrdinalIgnoreCase) == true))
+                    var issueUrl = urlProperty.GetString() ?? string.Empty;
+
+                    if (!issue.TryGetProperty("comments", out var comments) || comments.ValueKind != JsonValueKind.Object)
+                        continue;
+
+                    if (!comments.TryGetProperty("nodes", out var commentNodes) || commentNodes.ValueKind != JsonValueKind.Array)
+                        continue;
+
+                    foreach (var comment in commentNodes.EnumerateArray())
                     {
-                        Console.WriteLine($"👤 {comment.Login}");
-                        Console.WriteLine($" - {issue.Url}");
-                        Console.WriteLine();
-                        break;
+                        if (!comment.TryGetProperty("body", out var bodyProperty) || bodyProperty.ValueKind != JsonValueKind.String)
+                            continue;
+
+                        var commentBody = bodyProperty.GetString() ?? string.Empty;
+
+                        if (!comment.TryGetProperty("createdAt", out var createdAtProperty) || createdAtProperty.ValueKind != JsonValueKind.String)
+                            continue;
+
+                        if (!DateTimeOffset.TryParse(createdAtProperty.GetString(), out var createdAt))
+                            continue;
+
+                        if ((now - createdAt).TotalHours > 48)
+                            continue;
+
+                        if (!comment.TryGetProperty("author", out var author) || author.ValueKind != JsonValueKind.Object)
+                            continue;
+
+                        var login = author.TryGetProperty("login", out var loginProperty) && loginProperty.ValueKind == JsonValueKind.String
+                            ? loginProperty.GetString()
+                            : "unknown";
+
+                        if (s_claimKeywords.Any(k => commentBody.Contains(k, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            Console.WriteLine($"👤 {login}");
+                            Console.WriteLine($" - {issueUrl}");
+                            Console.WriteLine();
+                            break;
+                        }
                     }
                 }
             }
