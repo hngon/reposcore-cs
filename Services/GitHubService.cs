@@ -49,7 +49,7 @@ namespace RepoScore.Services
         }
 
         // PR 개수
-        public async Task<int> GetPullRequestCountAsync(string authorLogin)
+        public Task<int> GetPullRequestCountAsync(string authorLogin)
         {
             var query =
                 new Query()
@@ -59,11 +59,11 @@ namespace RepoScore.Services
                     first: 1)
                 .Select(x => x.IssueCount);
 
-            return await _connection.Run(query);
+            return _connection.Run(query);
         }
 
         // Issue 개수
-        public async Task<int> GetIssueCountAsync(string authorLogin)
+        public Task<int> GetIssueCountAsync(string authorLogin)
         {
             var query =
                 new Query()
@@ -73,7 +73,7 @@ namespace RepoScore.Services
                     first: 1)
                 .Select(x => x.IssueCount);
 
-            return await _connection.Run(query);
+            return _connection.Run(query);
         }
 
         // PR 댓글

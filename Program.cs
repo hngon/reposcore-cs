@@ -4,28 +4,27 @@ using RepoScore.Services;
 
 var app = CoconaApp.Create();
 
-app.AddCommand(async (
+app.AddCommand((
     [Argument] string repo,
     [Option('t', Description = "GitHub Personal Access Token")] string? token = null,
     [Option("show-claims", Description = "최근 이슈 선점 현황 조회")] bool showClaims = false
 ) =>
 {
-if (showClaims)
-{
-    if (string.IsNullOrEmpty(token))
-        token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
-
-    if (string.IsNullOrEmpty(token))
+    if (showClaims)
     {
-        Console.WriteLine("GitHub 토큰이 필요합니다.");
-        return;
-    }
+        if (string.IsNullOrEmpty(token))
+            token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
 
-    var parts = repo.Split('/');
-    var service = new GitHubService(parts[0], parts[1], token);
-    await service.ShowRecentClaimsAsync();
-    return;
-}
+        if (string.IsNullOrEmpty(token))
+        {
+            Console.WriteLine("GitHub 토큰이 필요합니다.");
+            return Task.CompletedTask;
+        }
+
+        var parts = repo.Split('/');
+        var service = new GitHubService(parts[0], parts[1], token);
+        return service.ShowRecentClaimsAsync();
+    }
 
     Console.WriteLine($"저장소: {repo}");
 
@@ -49,6 +48,8 @@ if (showClaims)
 
     int user3Score = ScoreCalculator.CalculateFinalScore(5, 6, 5, 2, 3);
     Console.WriteLine($"user3, 3, 2, 5, 6, 5, {user3Score}");
+    
+    return Task.CompletedTask;
 });
 
 app.Run();
