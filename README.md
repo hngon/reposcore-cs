@@ -35,6 +35,7 @@ dotnet run -- --help
 ```
 
 ## Synopsis
+<!-- synopsis:start -->
 
 ```text
 Usage: reposcore-cs <repo> [[--token <String>]]
@@ -48,6 +49,8 @@ Options:
   -h, --help              Show help message
   --version               Show version
 ```
+
+<!-- synopsis:end -->
 
 > 현재 개발 진행 중으로 상세 분석 기능은 순차적으로 업데이트될 예정입니다.
 

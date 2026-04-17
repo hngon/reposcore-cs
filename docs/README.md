@@ -31,14 +31,14 @@
 > ```
 >
 > ```bash
-> python docs/tools/update-readme.py
+> python tools/update-readme.py
 > ```
 >
-> 스크립트 위치: `/docs/tools/update-readme.py`
+> 스크립트 위치: `tools/update-readme.py`
 >
 > ```
 > 참고사항: 실행 명령어는 현재 작업중인 디렉터리에 따라 유동적으로 변동될 수 있음.
-> 예시) Root가 아닌 docs/에 위치할 시, python tools/update-readme.py 명령어 사용 시 작동
+> 예시) Root가 아닌 docs/에 위치할 시, python ../tools/update-readme.py 명령어 사용 시 작동
 > ```
 >
 > ⚠️ **수작업으로 문서 목록 갱신하지 마세요.**.  
@@ -50,12 +50,12 @@
 
 > ⚠️ `docs/README.md`를 직접 수정하지 마세요.
 
-`docs/README.md`를 수정하려면 먼저 `docs/templates/README-template.md`를 업데이트한 후, 루트 디렉터리에서 `python docs/tools/update-readme.py`를 실행하여 `docs/README.md`를 자동으로 갱신하세요.
+`docs/README.md`를 수정하려면 먼저 `docs/templates/README-template.md`를 업데이트한 후, 루트 디렉터리에서 `python tools/update-readme.py`를 실행하여 `docs/README.md`를 자동으로 갱신하세요.
 
 ### 수정 방법
 
 1. `docs/templates/README-template.md`를 업데이트합니다.
-2. 루트 디렉터리에서 `python docs/tools/update-readme.py`를 실행합니다.
+2. 루트 디렉터리에서 `python tools/update-readme.py`를 실행합니다.
 3. 커밋하기 전에 `docs/README.md`가 자동으로 갱신되었는지 확인합니다.
 
 ## 문서 파일 생성 규칙

@@ -1,7 +1,7 @@
 .PHONY: docs
 
 PYTHON      := python3
-DOCS_SCRIPT := docs/tools/update-readme.py
+DOCS_SCRIPT := tools/update-readme.py
 DOCS_FILES  := $(wildcard docs/*.md)
 DOCS_README_SRC    := $(filter-out docs/README.md,$(DOCS_FILES))
 DOCS_README_TPL    := docs/templates/README-template.md

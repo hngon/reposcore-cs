@@ -3,7 +3,7 @@
 docs/ 폴더의 마크다운 파일을 탐색하여 /docs/README.md의 문서 목록을 자동으로 갱신합니다.
 
 사용법 (프로젝트 루트에서):
-    python docs/tools/update_docs_readme.py
+    python tools/update_docs_readme.py
 
     또는 Makefile을 통해 (변경 감지 포함):
     make docs
