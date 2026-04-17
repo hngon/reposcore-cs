@@ -19,7 +19,7 @@ import re
 from pathlib import Path
 
 # ── 설정 ──────────────────────────────────────────────────────────────────────
-DOCS_DIR    = Path(__file__).parent.parent
+DOCS_DIR    = Path(__file__).parent.parent / "docs"
 TEMPLATE_DIR = DOCS_DIR / "templates"
 
 TEMPLATE_README = TEMPLATE_DIR / "README-template.md"
