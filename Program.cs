@@ -107,6 +107,10 @@ static void PrintClaimsReport(ClaimsData data, string mode)
 
     if (mode == "user")
     {
+        Console.WriteLine("📋 미선점 이슈");
+        foreach (var url in data.UnclaimedUrls) Console.WriteLine($" - {url}");
+        Console.WriteLine("\n📌 선점된 이슈");
+
         foreach (var (login, claims) in data.ClaimedMap)
         {
             Console.WriteLine($"👤 {login}");
