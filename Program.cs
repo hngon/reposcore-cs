@@ -51,9 +51,12 @@ app.AddCommand((
 
         foreach (var user in contributors)
         {
-            var claims = service.GetClaims(user);
-            var prs = service.GetPullRequests(user);
 
+            // 이슈 중 NotPlanned 또는 Duplicate인 경우 제외 
+            var claims = service.GetClaims(user).Where(c => c.ClosedReason != IssueClosedStateReason.NotPlanned && c.ClosedReason != IssueClosedStateReason.Duplicate).ToList();
+            // PR 중 병합된 경우만 포함
+            var prs = service.GetPullRequests(user).Where(p => p.IsMerged).ToList();
+            
             var featureBugPrs = prs.Where(p => p.Labels.Contains(GitHubIssuePrLabel.Bug) || p.Labels.Contains(GitHubIssuePrLabel.Enhancement)).ToList();
             var docPrs = prs.Where(p => p.Labels.Contains(GitHubIssuePrLabel.Documentation)).ToList();
             var typoPrs = prs.Where(p => p.Labels.Contains(GitHubIssuePrLabel.Typo)).ToList();
