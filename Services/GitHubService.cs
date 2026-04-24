@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Octokit; 
+using System.Text.Json;
+using Octokit;
 using Octokit.GraphQL;
 using Octokit.GraphQL.Model;
 
@@ -115,46 +116,82 @@ namespace RepoScore.Services
 
         public List<ClaimRecord> GetClaims(string authorLogin)
         {
-            var query = new Octokit.GraphQL.Query()
-                .Search(query: $"repo:{_owner}/{_repo} is:issue author:{authorLogin}", type: SearchType.Issue, first: 50)
-                .Nodes
-                .OfType<Octokit.GraphQL.Model.Issue>()
-                .Select(issue => new
+            const string rawGraphQl = @"
+            query($searchQuery: String!) {
+                search(query: $searchQuery, type: ISSUE, first: 50) {
+                    nodes {
+                        ... on Issue {
+                            number
+                            title
+                            url
+                            stateReason
+                            labels(first: 10) {
+                                nodes {
+                                    name
+                                }
+                            }
+                        }
+                    }
+                }
+            }";
+
+            var requestPayload = BuildRawQueryPayload(
+                rawGraphQl,
+                new Dictionary<string, object>
                 {
-                    issue.Number,
-                    issue.Title,
-                    issue.Url,
-                    issue.StateReason, // main 브랜치의 closedReason 요구사항 통합
-                    Labels = issue.Labels(10, null, null, null, null).Nodes.Select(l => l.Name).ToList()
+                    ["searchQuery"] = $"repo:{_owner}/{_repo} is:issue author:{authorLogin}"
                 });
 
-            var result = _graphQLConnection.Run(query).Result;
+            var rawResponse = _graphQLConnection.Run(requestPayload).Result;
             var claimRecords = new List<ClaimRecord>();
 
-            foreach (var issue in result)
+            using var document = JsonDocument.Parse(rawResponse);
+
+            if (!document.RootElement.TryGetProperty("data", out var dataElement) ||
+                !dataElement.TryGetProperty("search", out var searchElement) ||
+                !searchElement.TryGetProperty("nodes", out var nodesElement) ||
+                nodesElement.ValueKind != JsonValueKind.Array)
             {
-                var claimClosedReason = IssueClosedStateReason.None;
-                
-                // GraphQL 열거형 데이터를 내부 열거형 모델로 매핑
-                if (issue.StateReason.HasValue)
+                return claimRecords;
+            }
+
+            foreach (var node in nodesElement.EnumerateArray())
+            {
+                if (node.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                var labelNames = new List<string>();
+                if (node.TryGetProperty("labels", out var labelsElement) &&
+                    labelsElement.ValueKind == JsonValueKind.Object &&
+                    labelsElement.TryGetProperty("nodes", out var labelNodesElement) &&
+                    labelNodesElement.ValueKind == JsonValueKind.Array)
                 {
-                    var reasonStr = issue.StateReason.Value.ToString().ToUpperInvariant();
-                    claimClosedReason = reasonStr switch
+                    foreach (var labelNode in labelNodesElement.EnumerateArray())
                     {
-                        "COMPLETED" => IssueClosedStateReason.Completed,
-                        "DUPLICATE" => IssueClosedStateReason.Duplicate,
-                        "NOTPLANNED" or "NOT_PLANNED" => IssueClosedStateReason.NotPlanned,
-                        _ => IssueClosedStateReason.None
-                    };
+                        if (labelNode.ValueKind == JsonValueKind.Object &&
+                            labelNode.TryGetProperty("name", out var labelNameElement) &&
+                            labelNameElement.ValueKind == JsonValueKind.String)
+                        {
+                            var labelName = labelNameElement.GetString();
+                            if (!string.IsNullOrWhiteSpace(labelName))
+                                labelNames.Add(labelName);
+                        }
+                    }
                 }
 
                 claimRecords.Add(new ClaimRecord
                 {
-                    Number = issue.Number,
-                    Title = issue.Title,
-                    Url = issue.Url,
-                    ClosedReason = claimClosedReason,
-                    Labels = issue.Labels.Select(ParseGitHubLabel).Where(l => l != GitHubIssuePrLabel.None).ToList()
+                    Number = node.TryGetProperty("number", out var numberElement) && numberElement.TryGetInt32(out var number)
+                        ? number
+                        : 0,
+                    Title = node.TryGetProperty("title", out var titleElement) && titleElement.ValueKind == JsonValueKind.String
+                        ? titleElement.GetString() ?? string.Empty
+                        : string.Empty,
+                    Url = node.TryGetProperty("url", out var urlElement) && urlElement.ValueKind == JsonValueKind.String
+                        ? urlElement.GetString() ?? string.Empty
+                        : string.Empty,
+                    ClosedReason = ParseIssueClosedStateReason(node),
+                    Labels = labelNames.Select(ParseGitHubLabel).Where(l => l != GitHubIssuePrLabel.None).ToList()
                 });
             }
 
@@ -218,6 +255,33 @@ namespace RepoScore.Services
                 "typo" => GitHubIssuePrLabel.Typo,
                 "wontfix" => GitHubIssuePrLabel.Wontfix,
                 _ => GitHubIssuePrLabel.None,
+            };
+        }
+
+        private static string BuildRawQueryPayload(string query, Dictionary<string, object> variables)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                query,
+                variables
+            });
+        }
+
+        private static IssueClosedStateReason ParseIssueClosedStateReason(JsonElement issueNode)
+        {
+            if (!issueNode.TryGetProperty("stateReason", out var stateReasonElement) ||
+                stateReasonElement.ValueKind == JsonValueKind.Null)
+            {
+                return IssueClosedStateReason.None;
+            }
+
+            var reason = stateReasonElement.GetString()?.ToUpperInvariant();
+            return reason switch
+            {
+                "COMPLETED" => IssueClosedStateReason.Completed,
+                "DUPLICATE" => IssueClosedStateReason.Duplicate,
+                "NOT_PLANNED" or "NOTPLANNED" => IssueClosedStateReason.NotPlanned,
+                _ => IssueClosedStateReason.None
             };
         }
 
