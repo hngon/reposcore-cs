@@ -62,13 +62,16 @@ namespace RepoScore.Services
         private readonly string _owner;
         private readonly string _repo;
 
-        private static readonly string[] s_claimKeywords = ["제가 하겠습니다", "진행하겠습니다", "할게요", "I'll take this"];
+        private static readonly string[] s_defaultClaimKeywords = ["제가 하겠습니다", "진행하겠습니다", "할게요", "I'll take this"];
+        private readonly string[] _claimKeywords;
 
-        public GitHubService(string owner, string repo, string token)
+        public GitHubService(string owner, string repo, string token, string[]? keywords = null)
         {
             _owner = owner;
             _repo = repo;
             if (string.IsNullOrEmpty(token)) throw new ArgumentNullException(nameof(token));
+
+            _claimKeywords = keywords ?? s_defaultClaimKeywords;
 
             // 1. GraphQL 커넥션 초기화
             _graphQLConnection = new Octokit.GraphQL.Connection(
@@ -92,7 +95,7 @@ namespace RepoScore.Services
                     pr.Number,
                     pr.Title,
                     pr.Url,
-                    pr.Merged, // main 브랜치의 IsMerged 요구사항 통합
+                    pr.Merged,
                     Labels = pr.Labels(10, null, null, null, null).Nodes.Select(l => l.Name).ToList()
                 });
 
@@ -318,7 +321,7 @@ namespace RepoScore.Services
 
                     var login = comment.AuthorLogin ?? "unknown";
 
-                    if (s_claimKeywords.Any(k => comment.Body.Contains(k, StringComparison.OrdinalIgnoreCase)))
+                    if (_claimKeywords.Any(k => comment.Body.Contains(k, StringComparison.OrdinalIgnoreCase)))
                     {
                         var deadlineHours = IsDocumentTask(issueLabels) ? 24.0 : 48.0;
                         var remaining = comment.CreatedAt.AddHours(deadlineHours) - now;
