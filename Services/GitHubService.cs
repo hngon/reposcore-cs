@@ -227,7 +227,7 @@ namespace RepoScore.Services
         public List<string> GetPullRequestComments(int prNumber)
         {
             var query = new Octokit.GraphQL.Query()
-                .Repository(_owner, _repo)
+                .Repository(_repo, _owner)
                 .PullRequest(prNumber)
                 .Comments(first: 50)
                 .Nodes.Select(c => c.Body);
@@ -240,7 +240,7 @@ namespace RepoScore.Services
             try
             {
                 var query = new Octokit.GraphQL.Query()
-                    .Repository(_owner, _repo)
+                    .Repository(_repo, _owner)
                     .Issue(issueNumber)
                     .TimelineItems(first: 50)
                     .Nodes
@@ -314,7 +314,7 @@ namespace RepoScore.Services
         public ClaimsData GetRecentClaimsData()
         {
             var query = new Octokit.GraphQL.Query()
-                .Repository(_owner, _repo)
+                .Repository(_repo, _owner)
                 .Issues(first: 20, states: new[] { IssueState.Open }, orderBy: new IssueOrder { Field = IssueOrderField.CreatedAt, Direction = OrderDirection.Desc })
                 .Nodes.Select(issue => new
                 {
