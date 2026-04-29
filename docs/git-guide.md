@@ -56,7 +56,7 @@ git pull origin main
 
 ---
 
-#### 방법 B - 터미널만 사용 
+#### 방법 B — 터미널만 사용 
 
 **Step 1. upstream 등록 확인**
 
