@@ -22,7 +22,7 @@ await CoconaApp.RunAsync(async (
 [Option(Description = "로그 상세 수준 (-1=경고/에러만, 0=기본/진행 정보, 1=디버그, 2=상세 디버그)")] int verbose = 0
 ) =>
 {
-    var minimumLevel = verbose switch // 로거 설정을 먼저 수행
+    var minimumLevel = verbose switch
     {
         < 0 => LogEventLevel.Warning,
         0 => LogEventLevel.Information,
@@ -56,6 +56,7 @@ await CoconaApp.RunAsync(async (
             invalidFormats.Add(trimmedFormat);
         }
     }
+
 
     if (invalidFormats.Any())
     {
@@ -96,10 +97,10 @@ await CoconaApp.RunAsync(async (
         ? keywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
         : null;
 
-    // 저장소별 (issues, prs) 결과를 담을 딕셔너리 — 병렬 처리 후 합산에 사용
+    // 유효한 형식이 하나도 없으면 기본값(Csv) 사용
     var repoResults = new System.Collections.Concurrent.ConcurrentDictionary<string, (Dictionary<string, List<IssueRecord>> UserIssues, Dictionary<string, List<PRRecord>> UserPrs)>();
 
-    // 저장소 처리 중 발생한 예외를 저장 — Task.WhenAll 후 종료 코드 결정에 사용
+    // 유효한 형식이 하나도 없으면 기본값(Csv) 사용
     var repoFailures = new System.Collections.Concurrent.ConcurrentBag<string>();
 
     // 다중 저장소를 병렬로 처리 (동시 실행 상한: 8)
@@ -125,7 +126,6 @@ await CoconaApp.RunAsync(async (
 
             try
             {
-                // ── Claims 전용 모드 ──────────────────────────────────────────────────
                 if (claims != null)
                 {
                     Log.Information("[{Repo}] 최근 이슈 선점 현황을 조회합니다.", repo);
@@ -253,32 +253,8 @@ await CoconaApp.RunAsync(async (
 
                 reportData = ReportSorter.SortReportData(reportData, sortBy, sortOrder);
 
-                if (activeFormats.Contains(OutputFormat.Csv))
-                {
-                    var csv = new StringBuilder();
-                    csv.AppendLine("아이디, 문서이슈, 버그/기능이슈, 오타PR, 문서PR, 버그/기능PR, 총점");
-                    foreach (var r in reportData) csv.AppendLine($"{r.Id}, {r.docIssues}, {r.featBugIssues}, {r.typoPrs}, {r.docPrs}, {r.featBugPrs}, {r.Score}");
-
-                    string csvPath = Path.Combine(repoOutput, "results.csv");
-                    File.WriteAllText(csvPath, csv.ToString(), Encoding.UTF8);
-                    Log.Information("[{Repo}] 기본 데이터(CSV) 저장 완료: {CsvPath}", repo, csvPath);
-                }
-
-                if (activeFormats.Contains(OutputFormat.Txt))
-                {
-                    string txtPath = Path.Combine(repoOutput, "results.txt");
-                    string txtContent = ReportFormatter.BuildTextReport(repo, reportData);
-                    File.WriteAllText(txtPath, txtContent, Encoding.UTF8);
-                    Log.Information("[{Repo}] 가독성 리포트(TXT) 추가 저장 완료: {TxtPath}", repo, txtPath);
-                }
-
-                if (activeFormats.Contains(OutputFormat.Html))
-                {
-                    string htmlPath = Path.Combine(repoOutput, "results.html");
-                    string htmlContent = ReportFormatter.BuildHtmlReport(repo, reportData);
-                    File.WriteAllText(htmlPath, htmlContent, Encoding.UTF8);
-                    Log.Information("[{Repo}] HTML 리포트 추가 저장 완료: {HtmlPath}", repo, htmlPath);
-                }
+                // ── 1. 리팩토링 포인트: 개별 저장소 리포트 출력 ──
+                ExportReports(repo, reportData, activeFormats, repoOutput);
 
                 if (repos.Length > 1)
                 {
@@ -295,7 +271,6 @@ await CoconaApp.RunAsync(async (
                     return;
                 }
 
-                // 저장소 처리 실패를 기록하고 다른 저장소 처리는 계속 진행
                 Log.Error(ex, "[{Repo}] 처리 중 예외가 발생했습니다.", repo);
                 repoFailures.Add(repo);
             }
@@ -317,41 +292,17 @@ await CoconaApp.RunAsync(async (
         {
             Log.Information("전체 저장소 합산 리포트 생성 중...");
 
-            // 저장소별 결과를 순회하며 URL 기반 중복 제거 후 합산
             var totalUserIssues = new Dictionary<string, List<IssueRecord>>();
             var totalUserPullRequests = new Dictionary<string, List<PRRecord>>();
 
             foreach (var (_, (userIssues, userPrs)) in repoResults)
             {
-                foreach (var (user, issues) in userIssues)
-                {
-                    if (!totalUserIssues.ContainsKey(user)) totalUserIssues[user] = new List<IssueRecord>();
-                    foreach (var issue in issues)
-                    {
-                        bool isDuplicate = string.IsNullOrEmpty(issue.Url)
-                            ? totalUserIssues[user].Any(i => string.IsNullOrEmpty(i.Url) && i.Number == issue.Number)
-                            : totalUserIssues[user].Any(i => i.Url == issue.Url);
-                        if (!isDuplicate)
-                            totalUserIssues[user].Add(issue);
-                    }
-                }
-
-                foreach (var (user, prs) in userPrs)
-                {
-                    if (!totalUserPullRequests.ContainsKey(user)) totalUserPullRequests[user] = new List<PRRecord>();
-                    foreach (var pr in prs)
-                    {
-                        bool isDuplicate = string.IsNullOrEmpty(pr.Url)
-                            ? totalUserPullRequests[user].Any(p => string.IsNullOrEmpty(p.Url) && p.Number == pr.Number)
-                            : totalUserPullRequests[user].Any(p => p.Url == pr.Url);
-                        if (!isDuplicate)
-                            totalUserPullRequests[user].Add(pr);
-                    }
-                }
+                // ── 제네릭 함수를 활용한 병합 로직 단일화 ──
+                MergeUserRecords(totalUserIssues, userIssues, i => i.Url, i => i.Number);
+                MergeUserRecords(totalUserPullRequests, userPrs, p => p.Url, p => p.Number);
             }
 
             var totalReportData = new List<(string Id, int docIssues, int featBugIssues, int typoPrs, int docPrs, int featBugPrs, int Score)>();
-
             var allUsers = totalUserIssues.Keys.Union(totalUserPullRequests.Keys).ToList();
 
             foreach (var user in allUsers)
@@ -372,41 +323,12 @@ await CoconaApp.RunAsync(async (
 
             totalReportData = ReportSorter.SortReportData(totalReportData, sortBy, sortOrder);
 
-            string totalOutput = output;
-            if (!Directory.Exists(totalOutput)) Directory.CreateDirectory(totalOutput);
-
-            if (activeFormats.Contains(OutputFormat.Csv))
-            {
-                var totalCsv = new StringBuilder();
-                totalCsv.AppendLine("아이디, 문서이슈, 버그/기능이슈, 오타PR, 문서PR, 버그/기능PR, 총점");
-                foreach (var r in totalReportData) totalCsv.AppendLine($"{r.Id}, {r.docIssues}, {r.featBugIssues}, {r.typoPrs}, {r.docPrs}, {r.featBugPrs}, {r.Score}");
-
-                string totalCsvPath = Path.Combine(totalOutput, "results.csv");
-                File.WriteAllText(totalCsvPath, totalCsv.ToString(), Encoding.UTF8);
-                Log.Information("전체 합산 데이터(CSV) 저장 완료: {TotalCsvPath}", totalCsvPath);
-            }
-
-            if (activeFormats.Contains(OutputFormat.Txt))
-            {
-                string totalLabel = string.Join(" + ", repos);
-                string totalTxtPath = Path.Combine(totalOutput, "results.txt");
-                string totalTxtContent = ReportFormatter.BuildTextReport(totalLabel, totalReportData);
-                File.WriteAllText(totalTxtPath, totalTxtContent, Encoding.UTF8);
-                Log.Information("전체 합산 리포트(TXT) 저장 완료: {TotalTxtPath}", totalTxtPath);
-            }
-
-            if (activeFormats.Contains(OutputFormat.Html))
-            {
-                string totalLabel = string.Join(" + ", repos);
-                string totalHtmlPath = Path.Combine(totalOutput, "results.html");
-                string totalHtmlContent = ReportFormatter.BuildHtmlReport(totalLabel, totalReportData);
-                File.WriteAllText(totalHtmlPath, totalHtmlContent, Encoding.UTF8);
-                Log.Information("전체 합산 HTML 리포트 저장 완료: {TotalHtmlPath}", totalHtmlPath);
-            }
+            // ── 전체 합산 리포트 출력 ──
+            string totalLabel = string.Join(" + ", repos);
+            ExportReports(totalLabel, totalReportData, activeFormats, output);
         }
         catch (Exception ex)
         {
-            // 합산 단계 실패도 비 0 종료로 처리
             Log.Error(ex, "합산 리포트 생성 중 예외가 발생했습니다.");
             throw new CommandExitedException(1);
         }
@@ -420,3 +342,75 @@ await CoconaApp.RunAsync(async (
         throw new CommandExitedException(1);
     }
 });
+
+// CSV, TXT, HTML 서식에 맞춰 리포트 파일을 물리 디렉토리에 내보내는 공통 메서드
+
+static void ExportReports(
+    string label,
+    List<(string Id, int docIssues, int featBugIssues, int typoPrs, int docPrs, int featBugPrs, int Score)> reportData,
+    HashSet<OutputFormat> activeFormats,
+    string outputDir)
+{
+    if (!Directory.Exists(outputDir)) Directory.CreateDirectory(outputDir);
+
+    if (activeFormats.Contains(OutputFormat.Csv))
+    {
+        var csv = new StringBuilder();
+        csv.AppendLine("아이디, 문서이슈, 버그/기능이슈, 오타PR, 문서PR, 버그/기능PR, 총점");
+        foreach (var r in reportData)
+            csv.AppendLine($"{r.Id}, {r.docIssues}, {r.featBugIssues}, {r.typoPrs}, {r.docPrs}, {r.featBugPrs}, {r.Score}");
+
+        string csvPath = Path.Combine(outputDir, "results.csv");
+        File.WriteAllText(csvPath, csv.ToString(), Encoding.UTF8);
+        Log.Information("[{Label}] 데이터(CSV) 저장 완료: {CsvPath}", label, csvPath);
+    }
+
+    if (activeFormats.Contains(OutputFormat.Txt))
+    {
+        string txtPath = Path.Combine(outputDir, "results.txt");
+        string txtContent = ReportFormatter.BuildTextReport(label, reportData);
+        File.WriteAllText(txtPath, txtContent, Encoding.UTF8);
+        Log.Information("[{Label}] 가독성 리포트(TXT) 저장 완료: {TxtPath}", label, txtPath);
+    }
+
+    if (activeFormats.Contains(OutputFormat.Html))
+    {
+        string htmlPath = Path.Combine(outputDir, "results.html");
+        string htmlContent = ReportFormatter.BuildHtmlReport(label, reportData);
+        File.WriteAllText(htmlPath, htmlContent, Encoding.UTF8);
+        Log.Information("[{Label}] HTML 리포트 저장 완료: {HtmlPath}", label, htmlPath);
+    }
+}
+
+// 제네릭(Generic)과 람다 선택자를 이용해 이슈와 PR 구분 없이 URL/Number 기반 중복을 제거하며 데이터를 합산하는 메서드
+static void MergeUserRecords<T>(
+    Dictionary<string, List<T>> target,
+    Dictionary<string, List<T>> source,
+    Func<T, string?> urlSelector,
+    Func<T, int> numberSelector)
+{
+    foreach (var (user, items) in source)
+    {
+        if (!target.TryGetValue(user, out var targetList))
+        {
+            targetList = new List<T>();
+            target[user] = targetList;
+        }
+
+        foreach (var item in items)
+        {
+            string? url = urlSelector(item);
+            int number = numberSelector(item);
+
+            // URL이 없으면 Number로 비교, URL이 있으면 URL 문자열 자체로 중복 검사
+            bool isDuplicate = string.IsNullOrEmpty(url)
+                ? targetList.Any(t => string.IsNullOrEmpty(urlSelector(t)) && numberSelector(t) == number)
+                : targetList.Any(t => urlSelector(t) == url);
+
+            if (!isDuplicate)
+            {
+                targetList.Add(item);
+            }
+        }
+    }
+}
